@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math';
 import 'database_helper.dart';
+import 'ai_chatbot_page.dart';
+import 'mood_analysis_page.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,6 +83,9 @@ class FormattedValueRow extends StatelessWidget {
 // ==========================================
 // 🌟 側邊抽屜選單 (Drawer)
 // ==========================================
+// ==========================================
+// 🌟 側邊抽屜選單 (Drawer) - 已升級版！
+// ==========================================
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
@@ -113,7 +119,7 @@ class AppDrawer extends StatelessWidget {
             title: const Text('柯氏憂鬱量表', style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: const Text('定期心理狀態評測'),
             trailing: Chip(
-              label: const Text('即將推出', style: TextStyle(fontSize: 10, color: Colors.white)),
+              label: const Text('即將推出', style: TextStyle(fontSize: 15, color: Colors.white)),
               backgroundColor: Colors.indigo.shade300,
               padding: EdgeInsets.zero,
             ),
@@ -127,7 +133,7 @@ class AppDrawer extends StatelessWidget {
             title: const Text('諮商預約', style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: const Text('與心理師對話'),
             trailing: Chip(
-              label: const Text('即將推出', style: TextStyle(fontSize: 10, color: Colors.white)),
+              label: const Text('即將推出', style: TextStyle(fontSize: 15, color: Colors.white)),
               backgroundColor: Colors.indigo.shade300,
               padding: EdgeInsets.zero,
             ),
@@ -136,12 +142,47 @@ class AppDrawer extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('諮商預約功能開發中...'), behavior: SnackBarBehavior.floating));
             },
           ),
+          
+          // =======================================
+          // 👇 這是為你新加的：聊天機器人
+          // =======================================
+          ListTile(
+            leading: const Icon(Icons.smart_toy_rounded, color: Colors.indigo),
+            title: const Text('聊天機器人', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('24小時AI心理陪伴'),
+            trailing: const Chip(
+              label: Text('進入', style: TextStyle(fontSize: 15, color: Colors.white)),
+              backgroundColor: Colors.indigo, // 深色代表可點擊
+              padding: EdgeInsets.zero,
+            ),
+            onTap: () {
+              Navigator.pop(context); // 點擊後先自動收起側邊欄
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const AIChatbotPage()));
+            },
+          ),
+
+          // =======================================
+          // 👇 這是為你新加的：心情數據分析
+          // =======================================
+          ListTile(
+            leading: const Icon(Icons.analytics_rounded, color: Colors.indigo),
+            title: const Text('心情數據分析', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('發掘情緒變化趨勢'),
+            trailing: const Chip(
+              label: Text('進入', style: TextStyle(fontSize: 15, color: Colors.white)),
+              backgroundColor: Colors.indigo,
+              padding: EdgeInsets.zero,
+            ),
+            onTap: () {
+              Navigator.pop(context); // 點擊後先自動收起側邊欄
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodAnalysisPage()));
+            },
+          ),
         ],
       ),
     );
   }
 }
-
 // ==========================================
 // 🌟 主導航控制中樞
 // ==========================================
