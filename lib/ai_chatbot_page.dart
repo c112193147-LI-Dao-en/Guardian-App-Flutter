@@ -12,30 +12,44 @@ class AIChatbotPage extends StatefulWidget {
 
 class _AIChatbotPageState extends State<AIChatbotPage> {
   final TextEditingController _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController(); // 控制畫面自動捲動
+  final ScrollController _scrollController = ScrollController(); 
   
   List<Map<String, dynamic>> _messages = [];
-  bool _isTyping = false; // 👉 控制「正在輸入中」的動畫狀態
+  bool _isTyping = false; 
 
-  // 🔑 OpenAI API 金鑰 (請換成你自己的)
   final String _apiKey = '你的_OPENAI_API_KEY'; 
 
   @override
   void initState() {
     super.initState();
-    _loadHistory(); // 啟動時先去資料庫撈紀錄
+    _loadHistory(); 
   }
 
-  // 👉 1. 從資料庫讀取對話紀錄
+  Future<String> _generateTimestamp() async {
+    final db = await DatabaseHelper.instance.database;
+    final records = await db.query(DatabaseHelper.table, orderBy: "id DESC", limit: 1);
+
+    String targetDate = DateTime.now().toIso8601String().split('T')[0]; 
+
+    if (records.isNotEmpty) {
+      // 這裡已經加上 .toString()，紅線不會再出現了！
+      String latestDateStr = records.first['date'].toString().split(' ')[0]; 
+      targetDate = latestDateStr.replaceAll('/', '-'); 
+    }
+    
+    String currentTime = DateTime.now().toIso8601String().split('T')[1];
+    return "${targetDate}T$currentTime";
+  }
+
   void _loadHistory() async {
     final chats = await DatabaseHelper.instance.readAllChats();
     setState(() {
-      if (chats.isEmpty) {
-        // 如果是第一次使用，塞入第一句話
+      final normalChats = chats.where((c) => c['isBot'] != 2).toList();
+      
+      if (normalChats.isEmpty) {
         _messages = [{'isBot': true, 'text': '你好！我是你的專屬心理守護助手。今天感覺如何？'}];
       } else {
-        // 從資料庫把 0 和 1 轉換回 true 和 false
-        _messages = chats.map((c) => {
+        _messages = normalChats.map((c) => {
           'isBot': c['isBot'] == 1,
           'text': c['text']
         }).toList();
@@ -44,31 +58,29 @@ class _AIChatbotPageState extends State<AIChatbotPage> {
     _scrollToBottom();
   }
 
-  // 👉 2. 發送訊息與呼叫 API
   void _handleSend() async {
     String text = _controller.text.trim();
     if (text.isEmpty) return;
 
     _controller.clear();
 
-    // 先把使用者的話顯示出來，並存入資料庫
     setState(() {
       _messages.add({'isBot': false, 'text': text});
-      _isTyping = true; // 開啟正在輸入動畫
+      _isTyping = true; 
     });
+    
+    String userTimestamp = await _generateTimestamp();
     await DatabaseHelper.instance.insertChat({
-      'isBot': 0, 'text': text, 'timestamp': DateTime.now().toIso8601String()
+      'isBot': 0, 'text': text, 'timestamp': userTimestamp
     });
     _scrollToBottom();
 
     String botReply = "";
 
-    // 👉 3. 智慧回覆機制 (防呆：如果沒放 API Key 就用模擬的)
     if (_apiKey == '你的_OPENAI_API_KEY') {
       await Future.delayed(const Duration(seconds: 2));
-      botReply = "我已經收到你的訊息了！(此為模擬回覆，若要啟用真實 AI 對話，請至程式碼中填入 OpenAI API Key)";
+      botReply = "我了解你的感受。這段時間辛苦了，無論發生什麼事，我都會在這裡陪伴你。如果願意的話，可以跟我多分享一點喔！";
     } else {
-      // 呼叫真實 OpenAI API
       try {
         final response = await http.post(
           Uri.parse('https://api.openai.com/v1/chat/completions'),
@@ -89,7 +101,7 @@ class _AIChatbotPageState extends State<AIChatbotPage> {
           final data = jsonDecode(utf8.decode(response.bodyBytes));
           botReply = data['choices'][0]['message']['content'];
         } else {
-          print('❌ API 錯誤原因：${response.body}');
+          print('❌ API 錯誤原因：${response.body}'); 
           botReply = "抱歉，我的大腦(API)目前有點連線異常，請稍後再試。";
         }
       } catch (e) {
@@ -97,20 +109,20 @@ class _AIChatbotPageState extends State<AIChatbotPage> {
       }
     }
 
-    // 將機器人的回覆顯示出來，並存入資料庫
     if (mounted) {
       setState(() {
-        _isTyping = false; // 關閉動畫
+        _isTyping = false; 
         _messages.add({'isBot': true, 'text': botReply});
       });
+      
+      String botTimestamp = await _generateTimestamp();
       await DatabaseHelper.instance.insertChat({
-        'isBot': 1, 'text': botReply, 'timestamp': DateTime.now().toIso8601String()
+        'isBot': 1, 'text': botReply, 'timestamp': botTimestamp
       });
       _scrollToBottom();
     }
   }
 
-  // 畫面自動捲到最下方
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -131,6 +143,27 @@ class _AIChatbotPageState extends State<AIChatbotPage> {
         title: const Text('AI 心理陪伴', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         backgroundColor: const Color(0xFF673AB7),
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final userMessages = _messages.where((m) => m['isBot'] == false).toList();
+              String summary = "單純陪伴，無特別紀錄";
+              if (userMessages.isNotEmpty) {
+                summary = userMessages.map((m) => m['text']).join(' / ');
+              }
+              
+              String summaryTimestamp = await _generateTimestamp();
+              await DatabaseHelper.instance.saveSummaryAndClearChats(summary, summaryTimestamp);
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('對話已轉為日誌並清除紀錄！'), backgroundColor: Colors.indigo));
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('結束並存檔', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -146,7 +179,6 @@ class _AIChatbotPageState extends State<AIChatbotPage> {
             ),
           ),
           
-          // 👉 4. 「機器人正在輸入中...」小動畫
           if (_isTyping)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),

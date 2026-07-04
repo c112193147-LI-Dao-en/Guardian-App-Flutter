@@ -4,7 +4,7 @@ import 'dart:math';
 import 'database_helper.dart';
 import 'ai_chatbot_page.dart';
 import 'mood_analysis_page.dart';
-
+import 'kessler_scale_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +20,8 @@ void main() async {
 // ==========================================
 class GlobalSettings {
   static double stepGoal = 4000;
-  static double screenLimit = 7.0; 
+  static double screenMin = 2.0; 
+  static double screenMax = 8.0; 
   static double sleepMin = 6.0;
   static double sleepMax = 9.0;
 }
@@ -44,7 +45,7 @@ class GuardianApp extends StatelessWidget {
 }
 
 // ==========================================
-// 🌟 專屬排版元件：解決字體忽大忽小的問題
+// 🌟 專屬排版元件 (FormattedValueRow)
 // ==========================================
 class FormattedValueRow extends StatelessWidget {
   final String val1;
@@ -81,13 +82,63 @@ class FormattedValueRow extends StatelessWidget {
 }
 
 // ==========================================
-// 🌟 側邊抽屜選單 (Drawer)
-// ==========================================
-// ==========================================
-// 🌟 側邊抽屜選單 (Drawer) - 已升級版！
+// 🌟 側邊抽屜選單 (AppDrawer)
 // ==========================================
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
+
+  void _checkKesslerAndNavigate(BuildContext context) async {
+    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFF673AB7))));
+
+    final allRecords = await DatabaseHelper.instance.readAllRecords();
+    DateTime twoWeeksAgo = DateTime.now().subtract(const Duration(days: 14));
+
+    Map<String, Map<String, dynamic>> uniqueDays = {};
+    for (var r in allRecords) {
+      String dateStr = r['date'].toString().split(' ')[0];
+      List<String> parts = dateStr.split('/');
+      if (parts.length == 3) {
+        DateTime recordDate = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+        if (recordDate.isAfter(twoWeeksAgo) || recordDate.isAtSameMomentAs(twoWeeksAgo)) {
+          if (!uniqueDays.containsKey(dateStr)) uniqueDays[dateStr] = r;
+        }
+      }
+    }
+
+    int anomalyCount = 0;
+    for (var r in uniqueDays.values) {
+      int pastStepGoal = (r['step_goal'] ?? GlobalSettings.stepGoal).toInt();
+      double pastScreenMin = (r['screen_min'] ?? GlobalSettings.screenMin).toDouble();
+      int pastScreenMax = (r['screen_limit'] ?? GlobalSettings.screenMax).toInt();
+      double pastSleepMin = (r['sleep_min'] ?? GlobalSettings.sleepMin).toDouble();
+      double pastSleepMax = (r['sleep_max'] ?? GlobalSettings.sleepMax).toDouble();
+
+      if (r['steps'] < pastStepGoal ||
+          r['screen_time'] < pastScreenMin * 60 ||
+          r['screen_time'] > pastScreenMax * 60 ||
+          r['sleep_time'] < pastSleepMin ||
+          r['sleep_time'] > pastSleepMax) {
+        anomalyCount++;
+      }
+    }
+
+    if (!context.mounted) return;
+    Navigator.pop(context); // 關閉讀取圈圈
+
+    if (anomalyCount >= 3) {
+      Navigator.pop(context); // 關閉側邊欄
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const KesslerScalePage()));
+    } else {
+      Navigator.pop(context); // 關閉側邊欄
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('您近兩週狀態平穩 (僅異常 $anomalyCount 天)，暫不需填寫量表喔！', style: const TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        )
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,23 +168,20 @@ class AppDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.assignment_rounded, color: Colors.indigo),
             title: const Text('柯氏憂鬱量表', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('定期心理狀態評測'),
-            trailing: Chip(
-              label: const Text('即將推出', style: TextStyle(fontSize: 15, color: Colors.white)),
-              backgroundColor: Colors.indigo.shade300,
+            subtitle: const Text('動態偵測解鎖'),
+            trailing: const Chip(
+              label: Text('評測', style: TextStyle(fontSize: 10, color: Colors.white)),
+              backgroundColor: Color(0xFFE57373),
               padding: EdgeInsets.zero,
             ),
-            onTap: () {
-              Navigator.pop(context); 
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('柯氏憂鬱量表功能開發中...'), behavior: SnackBarBehavior.floating));
-            },
+            onTap: () => _checkKesslerAndNavigate(context),
           ),
           ListTile(
             leading: const Icon(Icons.event_available_rounded, color: Colors.indigo),
             title: const Text('諮商預約', style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: const Text('與心理師對話'),
             trailing: Chip(
-              label: const Text('即將推出', style: TextStyle(fontSize: 15, color: Colors.white)),
+              label: const Text('即將推出', style: TextStyle(fontSize: 10, color: Colors.white)),
               backgroundColor: Colors.indigo.shade300,
               padding: EdgeInsets.zero,
             ),
@@ -142,39 +190,31 @@ class AppDrawer extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('諮商預約功能開發中...'), behavior: SnackBarBehavior.floating));
             },
           ),
-          
-          // =======================================
-          // 👇 這是為你新加的：聊天機器人
-          // =======================================
           ListTile(
             leading: const Icon(Icons.smart_toy_rounded, color: Colors.indigo),
             title: const Text('聊天機器人', style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: const Text('24小時AI心理陪伴'),
             trailing: const Chip(
-              label: Text('進入', style: TextStyle(fontSize: 15, color: Colors.white)),
-              backgroundColor: Colors.indigo, // 深色代表可點擊
-              padding: EdgeInsets.zero,
-            ),
-            onTap: () {
-              Navigator.pop(context); // 點擊後先自動收起側邊欄
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const AIChatbotPage()));
-            },
-          ),
-
-          // =======================================
-          // 👇 這是為你新加的：心情數據分析
-          // =======================================
-          ListTile(
-            leading: const Icon(Icons.analytics_rounded, color: Colors.indigo),
-            title: const Text('心情數據分析', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('發掘情緒變化趨勢'),
-            trailing: const Chip(
-              label: Text('進入', style: TextStyle(fontSize: 15, color: Colors.white)),
+              label: Text('進入', style: TextStyle(fontSize: 10, color: Colors.white)),
               backgroundColor: Colors.indigo,
               padding: EdgeInsets.zero,
             ),
             onTap: () {
-              Navigator.pop(context); // 點擊後先自動收起側邊欄
+              Navigator.pop(context); 
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const AIChatbotPage()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.analytics_rounded, color: Colors.indigo),
+            title: const Text('近14 日足跡紀錄', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('發掘情緒變化趨勢'),
+            trailing: const Chip(
+              label: Text('進入', style: TextStyle(fontSize: 10, color: Colors.white)),
+              backgroundColor: Colors.indigo,
+              padding: EdgeInsets.zero,
+            ),
+            onTap: () {
+              Navigator.pop(context); 
               Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodAnalysisPage()));
             },
           ),
@@ -183,8 +223,9 @@ class AppDrawer extends StatelessWidget {
     );
   }
 }
+
 // ==========================================
-// 🌟 主導航控制中樞
+// 🌟 主導航控制中樞 (MainScreen)
 // ==========================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -239,7 +280,7 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // ==========================================
-// 🌟 1. 今日摘要首頁
+// 🌟 1. 今日摘要首頁 (HomePage)
 // ==========================================
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -271,20 +312,20 @@ class _HomePageState extends State<HomePage> {
   void _loadRecentData() async {
     final data = await DatabaseHelper.instance.readAllRecords();
     if (data.isNotEmpty) {
-      final latest = data.last; 
+      final latest = data.first; 
       if (mounted) {
         setState(() {
           steps = latest['steps'];
           screenTimeMinutes = latest['screen_time'];
-          sleepHours = latest['sleep_time'];
-          List<String> dateParts = latest['date'].split(' ')[0].split('/');
+          sleepHours = (latest['sleep_time'] as num).toDouble();
+          List<String> dateParts = latest['date'].toString().split(' ')[0].split('/');
           simulationDate = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2])).subtract(const Duration(days: 1));
         });
       }
     } else {
       setState(() {
         steps = GlobalSettings.stepGoal.toInt();
-        screenTimeMinutes = (GlobalSettings.screenLimit * 60 * 0.8).toInt();
+        screenTimeMinutes = (GlobalSettings.screenMax * 60 * 0.8).toInt();
         sleepHours = (GlobalSettings.sleepMin + GlobalSettings.sleepMax) / 2;
       });
     }
@@ -295,11 +336,15 @@ class _HomePageState extends State<HomePage> {
     if (steps < GlobalSettings.stepGoal) {
       insights.add("🚶‍♂️ 步數未達標，找個時間活動一下喔！");
     }
-    if (screenTimeMinutes >= (GlobalSettings.screenLimit * 60)) {
+    if (screenTimeMinutes < (GlobalSettings.screenMin * 60)) {
+      insights.add("📱 螢幕時間極低，要注意是否有社交隔離的傾向。");
+    } else if (screenTimeMinutes > (GlobalSettings.screenMax * 60)) {
       insights.add("📱 螢幕時間偏高，讓眼睛休息一下。");
     }
     if (sleepHours < GlobalSettings.sleepMin) {
       insights.add("🛏️ 昨晚睡得較少，今晚早點休息吧。");
+    } else if (sleepHours > GlobalSettings.sleepMax) {
+      insights.add("🛏️ 睡眠時間偏長，試著增加白天的活動量。");
     }
     return insights.isEmpty ? "✨ 狀態非常理想，請繼續保持！" : insights.join("\n\n");
   }
@@ -338,23 +383,41 @@ class _HomePageState extends State<HomePage> {
   void _simulateAndSave() async {
     bool forceAnomaly = _random.nextDouble() < 0.35; 
     int newSteps; int newScreenMinutes; double newSleep;
+    
     if (forceAnomaly) {
       newSteps = (GlobalSettings.stepGoal * 0.4).toInt() + _random.nextInt(1000); 
-      newScreenMinutes = (GlobalSettings.screenLimit * 60).toInt() + 60; 
+      if (_random.nextBool()) {
+        newScreenMinutes = (GlobalSettings.screenMax * 60).toInt() + 60; 
+      } else {
+        newScreenMinutes = (GlobalSettings.screenMin * 60).toInt() - 60; 
+        if (newScreenMinutes < 0) newScreenMinutes = 0;
+      }
       newSleep = GlobalSettings.sleepMin - 1.5;
     } else {
       newSteps = GlobalSettings.stepGoal.toInt() + 1000;       
-      newScreenMinutes = (GlobalSettings.screenLimit * 60 * 0.6).toInt(); 
+      newScreenMinutes = ((GlobalSettings.screenMin + GlobalSettings.screenMax) / 2 * 60).toInt(); 
       newSleep = (GlobalSettings.sleepMin + GlobalSettings.sleepMax) / 2;
     }
+
     await DatabaseHelper.instance.insertRecord({
       'date': "${simulationDate.year}/${simulationDate.month.toString().padLeft(2, '0')}/${simulationDate.day.toString().padLeft(2, '0')} 10:00",
-      'steps': newSteps, 'screen_time': newScreenMinutes, 'sleep_time': double.parse(newSleep.toStringAsFixed(1)),
+      'steps': newSteps, 
+      'screen_time': newScreenMinutes, 
+      'sleep_time': double.parse(newSleep.toStringAsFixed(1)),
+      'step_goal': GlobalSettings.stepGoal.toInt(),
+      'screen_min': GlobalSettings.screenMin,
+      'screen_limit': GlobalSettings.screenMax.toInt(),
+      'sleep_min': GlobalSettings.sleepMin,
+      'sleep_max': GlobalSettings.sleepMax,
     });
+
     setState(() {
+      steps = newSteps; 
+      screenTimeMinutes = newScreenMinutes; 
+      sleepHours = double.parse(newSleep.toStringAsFixed(1));
       simulationDate = simulationDate.subtract(const Duration(days: 1));
-      steps = newSteps; screenTimeMinutes = newScreenMinutes; sleepHours = double.parse(newSleep.toStringAsFixed(1));
     });
+
     if (forceAnomaly) _showTopNotification(context, _getInsight().replaceAll("\n\n", " "));
   }
 
@@ -380,21 +443,23 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 20),
             
-            // 🌟 使用新的 FormattedValueRow 解決字體忽大忽小的問題
             _buildSummaryCard(
               title: '步行',
               valueWidget: FormattedValueRow(val1: '$steps', unit1: '步'), 
-              icon: Icons.local_fire_department, color: Colors.orange, liveValue: steps, goalValue: GlobalSettings.stepGoal, goalText: '${GlobalSettings.stepGoal.toInt()}'
+              icon: Icons.local_fire_department, color: Colors.orange, 
+              liveValue: steps, goalMin: GlobalSettings.stepGoal, goalMax: GlobalSettings.stepGoal, goalText: '${GlobalSettings.stepGoal.toInt()}步'
             ),
             _buildSummaryCard(
               title: '螢幕使用時間',
               valueWidget: FormattedValueRow(val1: '${screenTimeMinutes ~/ 60}', unit1: '時', val2: '${screenTimeMinutes % 60}', unit2: '分'), 
-              icon: Icons.smartphone, color: Colors.blue, liveValue: screenTimeMinutes, goalValue: GlobalSettings.screenLimit * 60, goalText: '${GlobalSettings.screenLimit.toInt()}時'
+              icon: Icons.smartphone, color: Colors.blue, 
+              liveValue: screenTimeMinutes, goalMin: GlobalSettings.screenMin * 60, goalMax: GlobalSettings.screenMax * 60, goalText: '${GlobalSettings.screenMin.toInt()}~${GlobalSettings.screenMax.toInt()}時'
             ), 
             _buildSummaryCard(
               title: '睡眠時間', 
               valueWidget: FormattedValueRow(val1: sleepHours.toStringAsFixed(1), unit1: '時'), 
-              icon: Icons.bed, color: Colors.indigo, liveValue: sleepHours, goalValue: GlobalSettings.sleepMin, goalText: '${GlobalSettings.sleepMin.toInt()}時'
+              icon: Icons.bed, color: Colors.indigo, 
+              liveValue: sleepHours, goalMin: GlobalSettings.sleepMin, goalMax: GlobalSettings.sleepMax, goalText: '${GlobalSettings.sleepMin.toInt()}~${GlobalSettings.sleepMax.toInt()}時'
             ), 
             
             const SizedBox(height: 10),
@@ -407,18 +472,6 @@ class _HomePageState extends State<HomePage> {
                   const Row(children: [Icon(Icons.auto_awesome, color: Colors.white, size: 20), SizedBox(width: 8), Text("守護者洞察", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
                   const SizedBox(height: 16), 
                   Text(_getInsight(), style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5)),
-                  const SizedBox(height: 20),
-                  GestureDetector(
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('心情日誌功能開發中...'), behavior: SnackBarBehavior.floating)),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white24)),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [Icon(Icons.edit_note_rounded, color: Colors.white70, size: 18), SizedBox(width: 8), Text("記錄今天的心情...", style: TextStyle(color: Colors.white70, fontSize: 12))],
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -437,31 +490,77 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildCircularProgress(Color color, num liveValue, num goalValue, String goalText) {
-    double progress = (liveValue / goalValue).clamp(0.0, 1.0);
+  Widget _buildCircularProgress(Color defaultColor, num liveValue, num goalMax, String goalText, bool isWarning) {
+    double progress = (liveValue / goalMax).clamp(0.0, 1.0);
+    Color ringColor = isWarning ? const Color(0xFFE57373) : defaultColor;
+
     return Column(
       children: [
-        SizedBox(width: 72, height: 72, child: Stack(fit: StackFit.expand, children: [CircularProgressIndicator(value: 1.0, strokeWidth: 8, valueColor: AlwaysStoppedAnimation<Color>(color.withOpacity(0.15))), CircularProgressIndicator(value: progress, strokeWidth: 8, backgroundColor: Colors.transparent, valueColor: AlwaysStoppedAnimation<Color>(color), strokeCap: StrokeCap.round)])),
+        SizedBox(
+          width: 72, height: 72, 
+          child: Stack(
+            fit: StackFit.expand, 
+            children: [
+              CircularProgressIndicator(value: 1.0, strokeWidth: 8, valueColor: AlwaysStoppedAnimation<Color>(ringColor.withOpacity(0.15))), 
+              CircularProgressIndicator(value: progress, strokeWidth: 8, backgroundColor: Colors.transparent, valueColor: AlwaysStoppedAnimation<Color>(ringColor), strokeCap: StrokeCap.round)
+            ]
+          )
+        ),
         const SizedBox(height: 10), 
-        Text('目標: $goalText', style: const TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold)), 
+        Text('目標: $goalText', style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.bold)), 
       ],
     );
   }
 
-  Widget _buildSummaryCard({required String title, required Widget valueWidget, required IconData icon, required Color color, required num liveValue, required num goalValue, required String goalText}) {
+  Widget _buildSummaryCard({required String title, required Widget valueWidget, required IconData icon, required Color color, required num liveValue, required num goalMin, required num goalMax, required String goalText}) {
+    bool isWarning = false;
+    String subText = "";
+
+    if (title.contains('螢幕')) {
+      if (liveValue < goalMin) {
+        isWarning = true; subText = '⚠️ 缺乏動機/隔離'; 
+      } else if (liveValue > goalMax) {
+        isWarning = true; subText = '⚠️ 超時過度使用';
+      } else {
+        subText = '✨ 狀態良好';
+      }
+    } else if (title.contains('步行')) {
+      isWarning = liveValue < goalMin;
+      subText = isWarning ? '🏃 還差 ${(goalMin - liveValue).toInt()} 步' : '🔥 已達標';
+    } else {
+      isWarning = liveValue < goalMin || liveValue > goalMax;
+      if (liveValue < goalMin) subText = '🛏️ 睡眠不足';
+      else if (liveValue > goalMax) subText = '🛏️ 睡眠過長';
+      else subText = '💤 睡眠充足';
+    }
+
+    double progressBasis = title.contains('步行') ? goalMin.toDouble() : goalMax.toDouble();
+    Color ringColor = isWarning ? const Color(0xFFE57373) : color;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 8), Text(title, style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.bold, fontSize: 15))]),
+          Row(
+            children: [
+              Icon(icon, color: ringColor, size: 20), const SizedBox(width: 8), 
+              Text(title, style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.bold, fontSize: 15)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: ringColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Text(subText, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: ringColor)),
+              )
+            ]
+          ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.center, 
             children: [
-              valueWidget, // 替換為我們寫好的精美排版 Widget
-              _buildCircularProgress(color, liveValue, goalValue, goalText)
+              valueWidget, 
+              _buildCircularProgress(color, liveValue, progressBasis, goalText, isWarning)
             ]
           ),
         ],
@@ -471,7 +570,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ==========================================
-// 🌟 2. 詳細數據分析頁 (同步修復圖表頁的字體問題)
+// 🌟 2. 詳細數據分析頁 (AnalysisPage)
 // ==========================================
 class AnalysisPage extends StatefulWidget {
   const AnalysisPage({super.key});
@@ -484,10 +583,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
   int _selectedIndex = -1; 
   @override
   void initState() { super.initState(); _loadRecentData(); }
+  
   void _loadRecentData() async {
     final data = await DatabaseHelper.instance.readAllRecords();
     Map<String, Map<String, dynamic>> uniqueDays = {};
-    for (var r in data) { String dateOnly = r['date'].split(' ')[0]; if (!uniqueDays.containsKey(dateOnly)) uniqueDays[dateOnly] = r; }
+    for (var r in data) { 
+      String dateOnly = r['date'].toString().split(' ')[0]; 
+      if (!uniqueDays.containsKey(dateOnly)) uniqueDays[dateOnly] = r; 
+    }
     List<String> sortedDates = uniqueDays.keys.toList()..sort();
     List<String> last7Dates = sortedDates.reversed.take(7).toList().reversed.toList();
     setState(() { _recentRecords = last7Dates.map((date) => uniqueDays[date]!).toList(); });
@@ -519,12 +622,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget _buildAnalysisChart(String title, String defaultUnit, Color color, String key) {
     num displayValue = 0; String displayDate = "最近 7 日"; String labelText = "平均";
     if (_selectedIndex != -1 && _selectedIndex < _recentRecords.length) {
-      displayValue = _recentRecords[_selectedIndex][key]; displayDate = _recentRecords[_selectedIndex]['date'].split(' ')[0].substring(5).replaceAll('-', '/'); labelText = "單日紀錄"; 
+      displayValue = _recentRecords[_selectedIndex][key]; 
+      displayDate = _recentRecords[_selectedIndex]['date'].toString().split(' ')[0].substring(5).replaceAll('-', '/'); 
+      labelText = "單日紀錄"; 
     } else {
-      double sum = _recentRecords.fold(0.0, (prev, element) => prev + element[key]); displayValue = sum / _recentRecords.length;
+      double sum = _recentRecords.fold(0.0, (prev, element) => prev + (element[key] as num).toDouble()); 
+      displayValue = sum / _recentRecords.length;
     }
     
-    // 🌟 圖表區也同步套用新的 FormattedValueRow 排版
     Widget valueWidget;
     if (key == 'sleep_time') { 
       valueWidget = FormattedValueRow(val1: displayValue.toStringAsFixed(1), unit1: defaultUnit); 
@@ -542,17 +647,19 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text(displayDate, style: const TextStyle(color: Colors.grey, fontSize: 12))]),
           const SizedBox(height: 4), Text(labelText, style: const TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.w600)), const SizedBox(height: 2),
-          valueWidget, // 使用精美排版
+          valueWidget, 
           const SizedBox(height: 20),
           SizedBox(
             height: 140, 
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround, crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(_recentRecords.length, (index) {
-                double val = _recentRecords[index][key].toDouble(); double maxVal = _recentRecords.map((e) => e[key]).reduce((a, b) => a > b ? a : b).toDouble(); double heightFactor = maxVal == 0 ? 0.1 : (val / maxVal).clamp(0.1, 1.0);
+                double val = (_recentRecords[index][key] as num).toDouble(); 
+                double maxVal = _recentRecords.map((e) => (e[key] as num).toDouble()).reduce((a, b) => a > b ? a : b); 
+                double heightFactor = maxVal == 0 ? 0.1 : (val / maxVal).clamp(0.1, 1.0);
                 return GestureDetector(
                   onTap: () => setState(() => _selectedIndex = index),
-                  child: Container(color: Colors.transparent, child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [Container(width: 25, height: 90 * heightFactor, decoration: BoxDecoration(color: _selectedIndex == index ? color : color.withOpacity(0.4), borderRadius: BorderRadius.circular(6))), const SizedBox(height: 8), Text(_recentRecords[index]['date'].split(' ')[0].substring(5).replaceAll('-', '/'), style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold))])),
+                  child: Container(color: Colors.transparent, child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [Container(width: 25, height: 90 * heightFactor, decoration: BoxDecoration(color: _selectedIndex == index ? color : color.withOpacity(0.4), borderRadius: BorderRadius.circular(6))), const SizedBox(height: 8), Text(_recentRecords[index]['date'].toString().split(' ')[0].substring(5).replaceAll('-', '/'), style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold))])),
                 );
               }),
             ),
@@ -564,7 +671,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
 }
 
 // ==========================================
-// 🌟 3. 歷史紀錄盒子
+// 🌟 3. 歷史紀錄盒子 (HistoryListPage)
 // ==========================================
 class HistoryListPage extends StatefulWidget {
   const HistoryListPage({super.key});
@@ -581,11 +688,16 @@ class _HistoryListPageState extends State<HistoryListPage> {
   @override
   Widget build(BuildContext context) {
     Map<String, List<Map<String, dynamic>>> grouped = {};
-    for (var r in _allRecords) { String key = "${r['date'].split('/')[0]}|${int.parse(r['date'].split('/')[1])}"; if (!grouped.containsKey(key)) grouped[key] = []; grouped[key]!.add(r); }
+    for (var r in _allRecords) { 
+      String key = "${r['date'].toString().split('/')[0]}|${int.parse(r['date'].toString().split('/')[1])}"; 
+      if (!grouped.containsKey(key)) grouped[key] = []; 
+      grouped[key]!.add(r); 
+    }
     final keys = grouped.keys.toList();
+    
     return Scaffold(
       drawer: const AppDrawer(), 
-      appBar: AppBar(title: const Text('歷史紀錄盒子', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)), backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black), actions: [IconButton(icon: const Icon(Icons.delete_sweep, color: Colors.redAccent), onPressed: () async { await DatabaseHelper.instance.deleteAllRecords(); _loadData(); })]),
+      appBar: AppBar(title: const Text('歷史紀錄盒子', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)), backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black), actions: [IconButton(icon: const Icon(Icons.delete_sweep, color: const Color(0xFFE57373)), onPressed: () async { await DatabaseHelper.instance.deleteAllRecords(); _loadData(); })]),
       body: GridView.builder(
         padding: const EdgeInsets.all(16), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16), itemCount: keys.length,
         itemBuilder: (context, index) {
@@ -604,18 +716,65 @@ class MonthDetailPage extends StatelessWidget {
   final String year, month; final List<Map<String, dynamic>> records;
   const MonthDetailPage({super.key, required this.year, required this.month, required this.records});
 
-  void _showDailyChart(BuildContext context, Map<String, dynamic> record) {
-    int steps = record['steps']; int screenMins = record['screen_time']; double sleepHours = record['sleep_time']; String date = record['date'].split(' ')[0].replaceAll('/', '-');
+  void _showDailyChart(BuildContext context, Map<String, dynamic> record) async {
+    int steps = record['steps']; 
+    int screenMins = record['screen_time']; 
+    double sleepHours = (record['sleep_time'] as num).toDouble(); 
+    
+    String dbDate = record['date'].toString().split(' ')[0]; 
+    String targetDate = dbDate.replaceAll('/', '-'); 
+
+    final allChats = await DatabaseHelper.instance.readAllChats();
+    final todaysChats = allChats.where((c) => c['timestamp'].toString().startsWith(targetDate)).toList();
+
+    String chatSummary = "今日無 AI 互動紀錄";
+    final summaryLogs = todaysChats.where((c) => c['isBot'] == 2).toList();
+    
+    if (summaryLogs.isNotEmpty) {
+        chatSummary = "📝 你的心聲：「${summaryLogs.last['text']}」";
+    } else if (todaysChats.isNotEmpty) {
+        final userChats = todaysChats.where((c) => c['isBot'] == 0).toList();
+        if (userChats.isNotEmpty) {
+            String allUserTexts = userChats.map((c) => c['text']).join(' / ');
+            chatSummary = "💬 尚未存檔的心聲：「$allUserTexts」";
+        }
+    }
+
+    if (!context.mounted) return;
+
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
-          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))), padding: const EdgeInsets.only(top: 12, left: 24, right: 24, bottom: 40),
+          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))), 
+          padding: const EdgeInsets.only(top: 12, left: 24, right: 24, bottom: 40),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 24), Text('$date 數據快覽', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueGrey)), const SizedBox(height: 30),
-              _buildHorizontalBar('步行', '$steps 步', steps / 10000, Colors.orange, Icons.local_fire_department), _buildHorizontalBar('螢幕', '${screenMins~/60}時${screenMins%60}分', screenMins / 480, Colors.blue, Icons.smartphone), _buildHorizontalBar('睡眠', '${sleepHours}時', sleepHours / 10, Colors.indigo, Icons.bed), 
+              Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))), 
+              const SizedBox(height: 24), 
+              Text('$targetDate 數據快覽', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueGrey)), 
+              const SizedBox(height: 30),
+              
+              _buildHorizontalBar('步行', '$steps 步', steps / 10000, Colors.orange, Icons.local_fire_department), 
+              _buildHorizontalBar('螢幕', '${screenMins~/60}時${screenMins%60}分', screenMins / 480, Colors.blue, Icons.smartphone), 
+              _buildHorizontalBar('睡眠', '${sleepHours}時', sleepHours / 10, Colors.indigo, Icons.bed), 
+
+              const Divider(height: 30, thickness: 1, color: Colors.black12),
+              const Row(
+                children: [
+                  Icon(Icons.psychology_rounded, color: Color(0xFF673AB7)),
+                  SizedBox(width: 8),
+                  Text('AI 心理守護摘要', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 16)),
+                ]
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: const Color(0xFF673AB7).withOpacity(0.08), borderRadius: BorderRadius.circular(15)),
+                child: Text(chatSummary, style: const TextStyle(color: Color(0xFF673AB7), fontWeight: FontWeight.bold, height: 1.4)),
+              )
             ],
           ),
         );
@@ -648,7 +807,7 @@ class MonthDetailPage extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             child: InkWell( 
               borderRadius: BorderRadius.circular(20), onTap: () => _showDailyChart(context, r),
-              child: Padding(padding: const EdgeInsets.symmetric(vertical: 8.0), child: ListTile(leading: const CircleAvatar(backgroundColor: Color(0xFFF0F4FF), child: Icon(Icons.calendar_month, color: Colors.indigo)), title: Text(r['date'].split(' ')[0], style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Padding(padding: const EdgeInsets.only(top: 6.0), child: Text('步數: ${r['steps']} | 螢幕: $formattedScreen | 睡眠: ${r['sleep_time']}h', style: const TextStyle(fontSize: 12))), trailing: const Icon(Icons.chevron_right, color: Colors.grey))),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 8.0), child: ListTile(leading: const CircleAvatar(backgroundColor: Color(0xFFF0F4FF), child: Icon(Icons.calendar_month, color: Colors.indigo)), title: Text(r['date'].toString().split(' ')[0], style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Padding(padding: const EdgeInsets.only(top: 6.0), child: Text('步數: ${r['steps']} | 螢幕: $formattedScreen | 睡眠: ${r['sleep_time']}h', style: const TextStyle(fontSize: 12))), trailing: const Icon(Icons.chevron_right, color: Colors.grey))),
             ),
           );
         },
@@ -658,7 +817,7 @@ class MonthDetailPage extends StatelessWidget {
 }
 
 // ==========================================
-// 🌟 4. 個人化設定分頁
+// 🌟 4. 個人化設定分頁 (SettingsPage)
 // ==========================================
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -702,8 +861,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           
           _buildSettingCard(
-            title: '螢幕時間警示上限', icon: Icons.smartphone, color: Colors.blue, valueText: '${GlobalSettings.screenLimit.toInt()} 小時',
-            child: SliderTheme(data: SliderTheme.of(context).copyWith(activeTrackColor: Colors.blue, thumbColor: Colors.blue), child: Slider(value: GlobalSettings.screenLimit, min: 2, max: 12, divisions: 10, onChanged: (val) { setState(() { GlobalSettings.screenLimit = val; }); })),
+            title: '理想螢幕使用區間', icon: Icons.smartphone, color: Colors.blue, valueText: '${GlobalSettings.screenMin.toInt()} ~ ${GlobalSettings.screenMax.toInt()} 小時',
+            child: SliderTheme(data: SliderTheme.of(context).copyWith(activeTrackColor: Colors.blue, thumbColor: Colors.blue), child: RangeSlider(values: RangeValues(GlobalSettings.screenMin, GlobalSettings.screenMax), min: 0, max: 16, divisions: 16, onChanged: (val) { setState(() { GlobalSettings.screenMin = val.start; GlobalSettings.screenMax = val.end; }); })),
           ),
 
           _buildSettingCard(
@@ -740,7 +899,7 @@ class _SettingsPageState extends State<SettingsPage> {
 }
 
 // ==========================================
-// 🌟 5. 關於頁面
+// 🌟 5. 關於頁面 (AboutPage)
 // ==========================================
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});

@@ -1,201 +1,201 @@
 import 'package:flutter/material.dart';
-import 'database_helper.dart';
 
-class HistoryListPage extends StatefulWidget {
-  const HistoryListPage({super.key});
-
-  @override
-  State<HistoryListPage> createState() => _HistoryListPageState();
-}
-
-class _HistoryListPageState extends State<HistoryListPage> {
-  List<Map<String, dynamic>> _allRecords = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAllData();
-  }
-
-  // 負責將平鋪的資料分群：年份 -> 月份 -> 紀錄列表
-  Map<String, Map<String, List<Map<String, dynamic>>>> _groupDataByYearAndMonth() {
-    Map<String, Map<String, List<Map<String, dynamic>>>> grouped = {};
-
-    for (var record in _allRecords) {
-      String dbDate = record['date']; // 例如 "2026/04/24 13:30"
-      String dateOnly = dbDate.split(' ')[0]; // "2026/04/24"
-      List<String> parts = dateOnly.split('/');
-      
-      String year = "${parts[0]}年"; // "2026年"
-      String month = "${int.parse(parts[1])}月"; // "4月" (int.parse 可以自動把 04 變 4)
-
-      // 如果還沒有這個年份，就建立
-      if (!grouped.containsKey(year)) {
-        grouped[year] = {};
-      }
-      // 如果該年份下還沒有這個月份，就建立
-      if (!grouped[year]!.containsKey(month)) {
-        grouped[year]![month] = [];
-      }
-      
-      // 把資料塞進對應的年月裡
-      grouped[year]![month]!.add(record);
-    }
-    return grouped;
-  }
-
-  // 1. 從資料庫讀取所有紀錄
-  Future<void> _loadAllData() async {
-    final data = await DatabaseHelper.instance.readAllRecords();
-    setState(() {
-      // 將資料反轉，讓最新的紀錄顯示在最上面
-      _allRecords = data.reversed.toList();
-      _isLoading = false;
-    });
-  }
-
-  // 2. 執行刪除動作並重新整理畫面
-  void _deleteData() async {
-    await DatabaseHelper.instance.deleteAllRecords();
-    // 確保刪除動作完成後再重新抓取
-    await Future.delayed(const Duration(milliseconds: 100));
-    _loadAllData(); 
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🗑️ 所有歷史數據已完全清空'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    }
-  }
-
-  // 3. 刪除前的確認對話框
-  void _showDeleteConfirmDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('清空所有紀錄？'),
-        content: const Text('這將會刪除資料庫中所有的歷史紀錄，此操作無法復原。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteData();
-            },
-            child: const Text('確定刪除', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 4. 格式化日期顯示
-  String _formatDate(String isoString) {
-    DateTime dt = DateTime.parse(isoString);
-    return "${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-  }
+class MoodAnalysisPage extends StatelessWidget {
+  const MoodAnalysisPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: const Color(0xFFF8F9FA), 
       appBar: AppBar(
-        title: const Text('歷史數據明細', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: const Color(0xFFF2F2F7),
+        backgroundColor: const Color(0xFFF8F9FA),
         elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black),
-        actions: [
-          // 垃圾桶按鈕：如果沒資料就禁用 (null)
-          IconButton(
-            icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 28),
-            onPressed: _allRecords.isEmpty ? null : _showDeleteConfirmDialog,
-          ),
-          const SizedBox(width: 8),
-        ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        // 👇 這裡改掉了
+        title: const Text(
+          '14 日足跡紀錄',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _allRecords.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('目前尚無歷史紀錄', style: TextStyle(color: Colors.grey, fontSize: 16)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '近 14 日趨勢分析',
+              style: TextStyle(fontSize: 22.0, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4.0),
+            // 👇 這裡幫你把 7 天改成了 14 天對齊邏輯
+            const Text(
+              '基於您最近 14 天的活動紀錄', 
+              style: TextStyle(fontSize: 14.0, color: Colors.grey),
+            ),
+            const SizedBox(height: 24.0),
+
+            // --- 異常偵測卡片 ---
+            Container(
+              padding: const EdgeInsets.all(20.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16.0),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+                      SizedBox(width: 8.0),
+                      Text(
+                        '異常偵測 (點擊查看明細)',
+                        style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Colors.black87),
+                      ),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _allRecords.length,
-                  itemBuilder: (context, index) {
-                    final record = _allRecords[index];
+                  const SizedBox(height: 24.0),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildAlertCircle('2次', '步數異常'),
+                      _buildAlertCircle('2次', '螢幕異常'),
+                      _buildAlertCircle('2次', '睡眠異常'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32.0),
 
-                    // 數據單位轉換與格式化
-                    double screenHours = (record['screen_time'] as num) / 60;
-                    double sleepHours = (record['sleep_time'] as num).toDouble();
+            // --- 黃金三角平均值 ---
+            const Text(
+              '黃金三角平均值',
+              style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16.0),
+            _buildInfoCard(
+              icon: Icons.local_fire_department,
+              iconBgColor: const Color(0xFFFFF0E0),
+              iconColor: Colors.orange,
+              title: '平均步行',
+              value: '4099 步',
+            ),
+            const SizedBox(height: 12.0),
+            _buildInfoCard(
+              icon: Icons.smartphone,
+              iconBgColor: const Color(0xFFE0F0FF),
+              iconColor: Colors.blueAccent,
+              title: '平均螢幕時間',
+              value: '5時34分',
+            ),
+            const SizedBox(height: 12.0),
+            _buildInfoCard(
+              icon: Icons.bed,
+              iconBgColor: const Color(0xFFEAE0FF),
+              iconColor: Colors.deepPurpleAccent,
+              title: '平均睡眠時間',
+              value: '6.6 小時',
+            ),
+            const SizedBox(height: 32.0),
+            
+            const Divider(color: Color(0xFFE0E0E0), thickness: 1),
+            const SizedBox(height: 24.0),
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5, offset: const Offset(0, 2))
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                _formatDate(record['date']), 
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 14)
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 24, thickness: 0.5),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildTableItem("步數", "${record['steps']}", Colors.deepOrange),
-                              _buildTableItem("螢幕", "${screenHours.toStringAsFixed(1)}Hr", Colors.indigoAccent),
-                              _buildTableItem("睡眠", "${sleepHours.toStringAsFixed(1)}h", Colors.deepPurpleAccent),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+            // --- 近期紀錄回顧 ---
+            Row(
+              children: const [
+                Icon(Icons.history, color: Colors.deepPurple, size: 24), // 換成了普通的歷史 icon
+                SizedBox(width: 8.0),
+                // 👇 這裡改掉了
+                Text(
+                  '近期活動回顧', 
+                  style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16.0),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEBEBFC), 
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+              child: Row(
+                children: const [
+                  Text('05/20', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6A6C7A))),
+                  SizedBox(width: 16.0),
+                  Text('test1', style: TextStyle(color: Colors.deepPurpleAccent, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 40.0),
+          ],
+        ),
+      ),
     );
   }
 
-  // 輔助組件：建立數據單元格
-  Widget _buildTableItem(String label, String value, Color color) {
+  // 輔助組件不用管
+  Widget _buildAlertCircle(String count, String label) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        const SizedBox(height: 6),
-        Text(
-          value, 
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)
+        Container(
+          width: 60,
+          height: 60,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFEBEB), 
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            count,
+            style: const TextStyle(color: Colors.redAccent, fontSize: 16.0, fontWeight: FontWeight.bold),
+          ),
         ),
+        const SizedBox(height: 8.0),
+        Text(label, style: const TextStyle(fontSize: 12.0, color: Colors.grey)),
       ],
+    );
+  }
+
+  Widget _buildInfoCard({
+    required IconData icon,
+    required Color iconBgColor,
+    required Color iconColor,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFEAF1F9)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+              color: iconBgColor,
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 16.0),
+          Text(title, style: const TextStyle(fontSize: 16.0, color: Color(0xFF4A4A4A))),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 }
